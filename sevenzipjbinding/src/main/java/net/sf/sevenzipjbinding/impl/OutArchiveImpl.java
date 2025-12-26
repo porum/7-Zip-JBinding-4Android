@@ -2,6 +2,8 @@ package net.sf.sevenzipjbinding.impl;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.HashMap;
+import java.util.Map;
 
 import net.sf.sevenzipjbinding.ArchiveFormat;
 import net.sf.sevenzipjbinding.IInArchive;
@@ -42,9 +44,8 @@ public class OutArchiveImpl<T extends IOutItemBase> implements IOutArchive<T> {
      */
     private ArchiveFormat archiveFormat;
 
-    private Boolean headerEncryption;
-    private int compressionLevel = -1;
-    private int threadCount = -1;
+    private final Map<String, Object> properties = new HashMap<>();
+
     private PrintStream tracePrintStream;
     private boolean trace; // Read by native code
     private boolean closed;
@@ -54,29 +55,51 @@ public class OutArchiveImpl<T extends IOutItemBase> implements IOutArchive<T> {
     }
 
     protected void featureSetHeaderEncryption(boolean enabled) {
-        this.headerEncryption = Boolean.valueOf(enabled);
+        properties.put("HE", enabled);
     }
 
     protected void featureSetLevel(int compressionLevel) {
-        this.compressionLevel = compressionLevel;
+        if (compressionLevel >= 0) {
+            properties.put("X", compressionLevel);
+        }
     }
 
     protected void featureSetThreadCount(int threadCount) {
-        this.threadCount = threadCount;
+        properties.put("MT", threadCount > 0 ? threadCount : true);
+    }
+
+    /**
+     * Set solid features.
+     *
+     * @param solidBlockSpec
+     *            <code>null</code> - turn solid off
+     * @throws SevenZipException
+     *             7-Zip or 7-Zip-JBinding error occur. Use {@link SevenZipException#printStackTraceExtended()} to get
+     *             stack traces of this SevenZipException and of the all thrown 'cause by' exceptions.
+     */
+    protected void featureSetSolidSpec(String solidBlockSpec) throws SevenZipException {
+        properties.put("S", solidBlockSpec != null && !solidBlockSpec.isEmpty() ? solidBlockSpec : false);
     }
 
     protected void applyFeatures() throws SevenZipException {
         ensureOpened();
-        if (compressionLevel != -1) {
-            nativeSetLevel(compressionLevel);
-        }
-        if (headerEncryption != null) {
-            nativeSetHeaderEncryption(headerEncryption.booleanValue());
+
+        if (properties.isEmpty()) {
+            return;
         }
 
-        if (threadCount >= 0) {
-            nativeSetMultithreading(threadCount);
+        int size = properties.size();
+        String[] names = new String[size];
+        Object[] values = new Object[size];
+
+        int i = 0;
+        for (Map.Entry<String, Object> entry : properties.entrySet()) {
+            names[i] = entry.getKey();
+            values[i] = entry.getValue();
+            i++;
         }
+
+        nativeSetProperties(names, values);
     }
 
     /**
@@ -90,22 +113,18 @@ public class OutArchiveImpl<T extends IOutItemBase> implements IOutArchive<T> {
         this.archiveFormat = archiveFormat;
     }
 
-    protected native void nativeSetHeaderEncryption(boolean encryptHeader) throws SevenZipException;
-
-    protected native void nativeSetLevel(int compressionLevel) throws SevenZipException;
-
     /**
-     * Set solid features.
+     * Set properties.
      *
-     * @param solidBlockSpec
-     *            <code>null</code> - turn solid off
+     * @param names
+     *            array of property name
+     * @param values
+     *            array of property value
      * @throws SevenZipException
      *             7-Zip or 7-Zip-JBinding error occur. Use {@link SevenZipException#printStackTraceExtended()} to get
      *             stack traces of this SevenZipException and of the all thrown 'cause by' exceptions.
      */
-    protected native void nativeSetSolidSpec(String solidBlockSpec) throws SevenZipException;
-
-    protected native void nativeSetMultithreading(int threadCount) throws SevenZipException;
+    protected native void nativeSetProperties(String[] names, Object[] values) throws SevenZipException;
 
     private native void nativeUpdateItems(ISequentialOutStream outStream, int numberOfItems,
             Object archiveUpdateCallback) throws SevenZipException;
